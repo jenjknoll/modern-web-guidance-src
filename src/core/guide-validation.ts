@@ -172,6 +172,11 @@ export function isDraftStub(draft: unknown): boolean {
   return typeof draft === 'string' && draft.trim().toLowerCase() === 'stub';
 }
 
+/** Normalizes frontmatter `draft`, treating falsy-looking strings as not-draft. */
+function normalizeDraft(draft: boolean | string | undefined): boolean | string {
+  return typeof draft === 'string' && FALSY_DRAFT.has(draft.trim().toLowerCase()) ? false : draft ?? false;
+}
+
 interface ValidationResult {
   errors: string[];
   data: GuideData;
@@ -255,8 +260,9 @@ export function validateGuide(filePath: string): ValidationResult {
   errors.push(...validateMacros(maskedBody, relativePath));
   errors.push(...validateHtmlTags(maskedBody, relativePath));
   errors.push(...validateCallouts(maskedBody, relativePath));
-  const isStub = stripAllComments(body).trim().length === 0 || isDraftStub(data.draft);
-  if (!isStub) {
+  // Published guides must not link to unpublished ones; drafts may link ahead.
+  const isPublished = stripAllComments(body).trim().length > 0 && !normalizeDraft(data.draft);
+  if (isPublished) {
     errors.push(...validateGuideRefTargets(maskedBody, relativePath));
   }
   errors.push(...validateGuideTitle(maskedBody, relativePath, data, { requireTitle: true }));
@@ -603,9 +609,7 @@ export function inventoryGuide(dir: string, options?: { useTargetEvals?: boolean
   // Any truthy `draft` withholds the guide, but treat explicitly falsy-looking
   // strings (e.g. `draft: "false"`, `draft: no`) as not-draft — quoting a
   // boolean shouldn't silently unpublish a guide.
-  const draft = typeof data.draft === 'string' && FALSY_DRAFT.has(data.draft.trim().toLowerCase())
-    ? false
-    : data.draft ?? false;
+  const draft = normalizeDraft(data.draft);
   const isStub = hasFrontmatter && (!hasContent || isDraftStub(draft));
   const hasGuide = hasContent && !isDraftStub(draft);
   const isPublished = hasGuide && !draft;
