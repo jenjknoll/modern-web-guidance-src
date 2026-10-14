@@ -469,7 +469,6 @@ describe('buildRequiredFilesChecklist', () => {
       hasTask: false,
       featureIds: [],
       isDisciplineGuide: false,
-      draft: false,
       isPublished: false,
       ...overrides,
     };
@@ -522,12 +521,11 @@ describe('buildRequiredFilesChecklist', () => {
   });
 
   test('does not check off guide.md and appends draft annotation when draft is truthy', () => {
-    const invBool = makeInventory({
+    const invWip = makeInventory({
       hasGuide: true,
-      draft: true,
+      draft: 'wip',
     });
-    const resultBool = buildRequiredFilesChecklist(invBool);
-    assert.ok(resultBool.includes('- [ ] Use case guidance (guide.md) *(draft: true)*'));
+    assert.ok(buildRequiredFilesChecklist(invWip).includes('- [ ] Use case guidance (guide.md) *(draft: wip)*'));
 
     const invBlocked = makeInventory({
       hasGuide: true,
@@ -564,7 +562,6 @@ describe('buildIssueContent', () => {
       hasTask: false,
       featureIds: [],
       isDisciplineGuide: false,
-      draft: false,
       isPublished: false,
     };
   }
@@ -841,7 +838,6 @@ describe('processGuideInventory', () => {
       hasTask: false,
       featureIds: [],
       isDisciplineGuide: false,
-      draft: false,
       isPublished: false,
       ...overrides,
     };
