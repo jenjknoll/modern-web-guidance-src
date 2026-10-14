@@ -6,6 +6,7 @@ import zlib from "node:zlib";
 import { marked, type Tokens } from "marked";
 import { outDir, rootDir } from "../../core/paths.ts";
 import { isEnoent } from "../../harness/lib/agent-shared.ts";
+import { buildBm25Index, rankBm25 } from "../bm25.ts";
 import type { EmbedderLike, UseCaseVector } from "../search.ts";
 import { TfjsEmbedder } from "../tfjs-embedder.ts";
 import {
@@ -56,6 +57,7 @@ export function extractCardHeadings(body: string, maxHeadings = MAX_HEADINGS_PER
 export interface CorpusForPooling {
   cards: Map<string, GuideCard>;
   vectors: UseCaseVector[];
+  bm25: ReturnType<typeof buildBm25Index>;
 }
 
 export function loadCorpusForPooling(buildDir = path.join(outDir, "build/skills-cli")): CorpusForPooling {
@@ -69,6 +71,7 @@ export function loadCorpusForPooling(buildDir = path.join(outDir, "build/skills-
   }
 
   const cards = new Map<string, GuideCard>();
+  const bm25Docs: { id: string; text: string }[] = [];
 
   for (const item of metaRaw) {
     if (!isRecord(item) || typeof item.id !== "string" || typeof item.description !== "string" || typeof item.category !== "string") {
@@ -84,6 +87,11 @@ export function loadCorpusForPooling(buildDir = path.join(outDir, "build/skills-
       description: item.description,
       category: item.category,
       headings,
+    });
+    // Weight title and description 2x in the pooling BM25 index so header terms surface strongly in the candidate pool
+    bm25Docs.push({
+      id: item.id,
+      text: `${title} ${title} ${item.description} ${item.description} ${body}`,
     });
   }
 
@@ -105,10 +113,11 @@ export function loadCorpusForPooling(buildDir = path.join(outDir, "build/skills-
       featuresUsed: Array.isArray(v.featuresUsed) ? v.featuresUsed.filter((x): x is string => typeof x === "string") : [],
       tokenCount: typeof v.tokenCount === "number" ? v.tokenCount : 0,
       vector: v.vector.map((n) => Number(n)),
+      chunkContent: typeof v.chunkContent === "string" ? v.chunkContent : "",
     };
   });
 
-  return { cards, vectors };
+  return { cards, vectors, bm25: buildBm25Index(bm25Docs) };
 }
 
 function dotProduct(a: number[], b: number[]): number {
@@ -121,10 +130,11 @@ function dotProduct(a: number[], b: number[]): number {
  * Pools candidate guide IDs for a query by taking the union of top-K from:
  * 1) Dense max-chunk cosine similarity
  * 2) Dense mean-chunk cosine similarity
+ * 3) Whole-guide Okapi BM25
  * plus `expectedGuide` (if present in the corpus) and any `extraCandidates`.
  */
 export function poolQueryCandidates(
-  _query: string,
+  query: string,
   queryVector: number[],
   corpus: CorpusForPooling,
   options: { poolDepth?: number; expectedGuide?: string; extraCandidates?: Iterable<string> } = {}
@@ -147,8 +157,9 @@ export function poolQueryCandidates(
 
   const topMax = [...denseStats].sort((a, b) => b.max - a.max).slice(0, k).map((x) => x.id);
   const topMean = [...denseStats].sort((a, b) => b.mean - a.mean).slice(0, k).map((x) => x.id);
+  const topBm25 = rankBm25(corpus.bm25, query).slice(0, k).map((x) => x.id);
 
-  const candidates = new Set<string>([...topMax, ...topMean]);
+  const candidates = new Set<string>([...topMax, ...topMean, ...topBm25]);
   if (options.expectedGuide && corpus.cards.has(options.expectedGuide)) {
     candidates.add(options.expectedGuide);
   }
