@@ -3,9 +3,9 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { parseExpectations, validateHtmlTags, validateCallouts, validateGuideRefTargets, validateHeadings, validateGuideTitle, validateBaselineClaims, validateGuide, inventoryGuide, classifyGuide, getSupportedBaseApps, extractH1Heading, extractAllH1Headings, stripAllComments, isDraftStub, checkOriginTrialGraduations } from './guide-validation.ts';
+import { parseExpectations, validateHtmlTags, validateCallouts, validateHeadings, validateGuideTitle, validateBaselineClaims, validateGuide, inventoryGuide, classifyGuide, getSupportedBaseApps, extractH1Heading, extractAllH1Headings, stripAllComments, isDraftStub, checkOriginTrialGraduations } from './guide-validation.ts';
 import { extractFeatureIds } from './feature-parser.ts';
-import { maskComments } from './macros.ts';
+import { maskComments, validateMacros } from './macros.ts';
 
 describe('extractH1Heading and extractAllH1Headings', () => {
   test('extracts standard ATX H1 heading', () => {
@@ -122,13 +122,13 @@ describe('parseExpectations', () => {
   });
 });
 
-describe('validateGuideRefTargets', () => {
+describe('GUIDE_REF publication target validation', () => {
   test('allows references to published guides', () => {
-    assert.deepStrictEqual(validateGuideRefTargets('See {{ GUIDE_REF("forms") }}.', 'test.md'), []);
+    assert.deepStrictEqual(validateMacros('See {{ GUIDE_REF("forms") }}.', 'test.md', { target: 'static-site' }), []);
   });
 
   test('rejects references to unpublished guides', () => {
-    const errors = validateGuideRefTargets(`See {{ GUIDE_REF('slider-tooltip') }}.`, 'test.md');
+    const errors = validateMacros(`See {{ GUIDE_REF('slider-tooltip') }}.`, 'test.md', { target: 'static-site' });
     assert.strictEqual(errors.length, 1);
     assert.match(errors[0], /GUIDE_REF\("slider-tooltip"\).*unpublished/);
   });
@@ -681,11 +681,13 @@ describe('guide draft flag (publish control)', () => {
     assert.strictEqual(inventory('---\ndraft: future\n---\n# G\nBody').isPublished, false);
   });
 
-  test('falsy-looking string draft values still publish', () => {
+  test('falsy-looking string draft values still publish', async (t) => {
     // Quoting a boolean (draft: "false") or writing draft: no must not silently unpublish.
     for (const val of ['"false"', 'no', 'off', '0', "''"]) {
-      const inv = inventory(`---\ndraft: ${val}\n---\n# G\nBody`);
-      assert.strictEqual(inv.isPublished, true, `draft: ${val}`);
+      await t.test(`draft: ${val}`, () => {
+        const inv = inventory(`---\ndraft: ${val}\n---\n# G\nBody`);
+        assert.strictEqual(inv.isPublished, true);
+      });
     }
   });
 
