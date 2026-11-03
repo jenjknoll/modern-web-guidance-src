@@ -145,7 +145,7 @@ Example scenario, starting with the OS set to light:
 ### Three-state toggles
 
 When there is more space and users are already in the mindset of setting long-term preferences, a tri-state control can provide more clarity.
-In this case, the data model cleanly maps to the three UI options: system, light, and dark.
+In this case, the data model cleanly maps to the three UI options: system, light, and dark (implemented as a `<fieldset>` radio group or `<select>`).
 
 To reduce cognitive load, the "system" option should also display what the current system setting is, for example via:
 - Icon, e.g. a sun icon at the bottom right of the system icon
